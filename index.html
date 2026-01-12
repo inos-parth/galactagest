@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cyberpunk Hand Particles</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --neon-cyan: #00f6ff;
+      --neon-blue: #00ffff;
+      --neon-yellow: #ffff00;
+      --neon-pink: #ff00ff;
+      --neon-green: #00ff88;
+      --hud-dim: rgba(0, 246, 255, 0.7);
+      --grid: rgba(0, 246, 255, 0.05);
+      --scan: rgba(0, 246, 255, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+      font-family: "Orbitron", "Courier New", monospace;
+      color: var(--neon-cyan);
+    }
+
+    #app {
+      position: relative;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at 50% 40%, rgba(0, 246, 255, 0.06), rgba(0, 0, 0, 0.95) 60%),
+                  linear-gradient(0deg, rgba(0,0,0,0.95), rgba(0,0,0,0.85));
+    }
+
+    canvas {
+      display: block;
+    }
+
+    .overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      mix-blend-mode: screen;
+    }
+
+    .grid {
+      background-image:
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      background-size: 40px 40px;
+      opacity: 0.4;
+      animation: gridMove 12s linear infinite;
+    }
+
+    .scanlines {
+      background: repeating-linear-gradient(
+        to bottom,
+        rgba(0, 0, 0, 0),
+        rgba(0, 0, 0, 0) 2px,
+        var(--scan) 3px,
+        rgba(0, 0, 0, 0) 4px
+      );
+      opacity: 0.6;
+      animation: scanShift 6s linear infinite;
+    }
+
+    .vignette {
+      background: radial-gradient(circle, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0.85) 75%);
+    }
+
+    .hud {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+    }
+
+    .hud .corner {
+      position: absolute;
+      padding: 14px 16px;
+      color: var(--hud-dim);
+      line-height: 1.5;
+      text-shadow: 0 0 10px rgba(0, 246, 255, 0.4);
+    }
+
+    .hud .tl { top: 0; left: 0; }
+    .hud .tr { top: 0; right: 0; text-align: right; }
+    .hud .bl { bottom: 0; left: 0; }
+    .hud .br { bottom: 0; right: 0; text-align: right; }
+
+    .status {
+      color: var(--neon-cyan);
+    }
+
+    #video {
+      position: absolute;
+      width: 160px;
+      height: 120px;
+      right: 16px;
+      bottom: 16px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .instructions {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.6s ease;
+      color: #ffffff;
+      text-shadow: 0 0 14px rgba(255, 255, 255, 0.4);
+    }
+
+    .instructions.show {
+      opacity: 1;
+    }
+
+    .instructions-panel {
+      padding: 18px 22px;
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(4px);
+      max-width: min(520px, 82vw);
+      text-align: left;
+      font-size: 12px;
+      letter-spacing: 0.1em;
+      line-height: 1.6;
+    }
+
+    .instructions-title {
+      font-size: 14px;
+      letter-spacing: 0.2em;
+      margin-bottom: 8px;
+    }
+
+    .instructions-body {
+      text-transform: uppercase;
+    }
+
+    @keyframes gridMove {
+      0% { transform: translateY(0); }
+      100% { transform: translateY(40px); }
+    }
+
+    @keyframes scanShift {
+      0% { transform: translateY(0); }
+      100% { transform: translateY(12px); }
+    }
+
+    @media (max-width: 768px) {
+      .hud { font-size: 10px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <canvas id="three"></canvas>
+    <div class="overlay grid"></div>
+    <div class="overlay scanlines"></div>
+    <div class="overlay vignette"></div>
+    <div id="instructions" class="instructions">
+      <div class="instructions-panel">
+        <div class="instructions-title">HOW TO PLAY</div>
+        <div class="instructions-body">
+          <div>Move: Right hand index (left/right)</div>
+          <div>Fire: Quick pinch (thumb + index)</div>
+          <div>Pause: Hold pinch</div>
+          <div>Restart: Pinch after Game Over</div>
+          <div>Name Entry: Move to select letter, pinch to add, 2 fingers delete, 5 fingers confirm</div>
+          <div>Pinch to start the game</div>
+        </div>
+      </div>
+    </div>
+    <div class="hud">
+      <div class="corner tl">
+        <div>FPS: <span id="fps" class="status">--</span></div>
+        <div>Score: <span id="scoreStatus" class="status">0</span></div>
+        <div>Player: <span id="playerStatus" class="status">----</span></div>
+      </div>
+      <div class="corner tr">
+        <div>Right Hand: <span id="rightStatus" class="status">Searching</span></div>
+        <div>System: <span id="systemStatus" class="status">Online</span></div>
+      </div>
+      <div class="corner bl">
+        <div>Lives: <span id="livesStatus" class="status">3</span></div>
+        <div>Wave: <span id="waveStatus" class="status">01</span></div>
+      </div>
+      <div class="corner br">
+        <div>Gesture: <span id="gestureStatus" class="status">--</span></div>
+        <div>Fire: <span id="fireStatus" class="status">Idle</span></div>
+      </div>
+    </div>
+    <video id="video" autoplay playsinline muted></video>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/hands.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3.1640029074/camera_utils.js"></script>
+  <script type="module">
+    import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js";
+
+    const canvas = document.getElementById("three");
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 2000);
+    camera.position.z = 1000;
+
+    const clock = new THREE.Clock();
+
+    const hud = {
+      fps: document.getElementById("fps"),
+      right: document.getElementById("rightStatus"),
+      system: document.getElementById("systemStatus"),
+      score: document.getElementById("scoreStatus"),
+      player: document.getElementById("playerStatus"),
+      lives: document.getElementById("livesStatus"),
+      wave: document.getElementById("waveStatus"),
+      gesture: document.getElementById("gestureStatus"),
+      fire: document.getElementById("fireStatus"),
+    };
+
+    const instructionsEl = document.getElementById("instructions");
+    const introState = {
+      instructionsVisible: true,
+    };
+    instructionsEl.classList.add("show");
+
+    const settings = {
+      starCount: 4200,
+      starSpeedMin: 20,
+      starSpeedMax: 90,
+      fireCooldown: 0.2,
+      shipYInset: 80,
+      pauseHoldTime: 0.35,
+    };
+
+    const state = {
+      score: 0,
+      lives: 3,
+      wave: 1,
+      gameOver: false,
+      paused: false,
+      nameMode: true,
+      playerName: "",
+      nameCursor: 0,
+    };
+
+    const handState = {
+      right: null,
+    };
+
+    const world = {
+      width: window.innerWidth,
+      height: window.innerHeight,
+    };
+
+    const starGeometry = new THREE.BufferGeometry();
+    const starPositions = new Float32Array(settings.starCount * 3);
+    const starSpeeds = new Float32Array(settings.starCount);
+    const starMaterial = new THREE.PointsMaterial({
+      size: 1.2,
+      color: 0x00f6ff,
+      blending: THREE.AdditiveBlending,
+      transparent: true,
+      opacity: 0.6,
+      depthWrite: false,
+    });
+
+    function initStars() {
+      for (let i = 0; i < settings.starCount; i += 1) {
+        const i3 = i * 3;
+        starPositions[i3] = (Math.random() - 0.5) * world.width;
+        starPositions[i3 + 1] = (Math.random() - 0.5) * world.height;
+        starPositions[i3 + 2] = (Math.random() - 0.5) * 600;
+        starSpeeds[i] = settings.starSpeedMin + Math.random() * (settings.starSpeedMax - settings.starSpeedMin);
+      }
+      starGeometry.setAttribute("position", new THREE.BufferAttribute(starPositions, 3));
+    }
+
+    initStars();
+
+    const stars = new THREE.Points(starGeometry, starMaterial);
+    scene.add(stars);
+
+    const shipMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00ffff,
+      blending: THREE.AdditiveBlending,
+      transparent: true,
+    });
+    const shipGeometry = new THREE.ConeGeometry(14, 32, 3);
+    const ship = new THREE.Mesh(shipGeometry, shipMaterial);
+    scene.add(ship);
+
+    const enemyGroup = new THREE.Group();
+    scene.add(enemyGroup);
+
+    const enemyGeometry = new THREE.IcosahedronGeometry(12, 0);
+    const enemyMaterial = new THREE.MeshBasicMaterial({
+      color: 0xff00ff,
+      blending: THREE.AdditiveBlending,
+      transparent: true,
+    });
+
+    const bulletGeometry = new THREE.SphereGeometry(3, 10, 10);
+    const bulletMaterial = new THREE.MeshBasicMaterial({
+      color: 0x00f6ff,
+      blending: THREE.AdditiveBlending,
+      transparent: true,
+    });
+
+    const enemyBulletMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffaa00,
+      blending: THREE.AdditiveBlending,
+      transparent: true,
+    });
+
+    let bullets = [];
+    let enemyBullets = [];
+    let enemies = [];
+    let enemyDirection = 1;
+    let enemySpeed = 40;
+    let enemyFireTimer = 0;
+    let fireCooldown = 0;
+    let shipTargetX = 0;
+    let shipHitTimer = 0;
+    let lastPinch = false;
+    let restartCooldown = 0;
+    let pinchStartTime = 0;
+    let pinchHandled = false;
+    let nameCooldown = 0;
+    const nameAlphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789".split("");
+
+    function spawnBullet(x, y) {
+      const mesh = new THREE.Mesh(bulletGeometry, bulletMaterial);
+      mesh.position.set(x, y + 20, 0);
+      scene.add(mesh);
+      bullets.push({ mesh, speed: 520 });
+    }
+
+    function spawnEnemyBullet(x, y) {
+      const mesh = new THREE.Mesh(bulletGeometry, enemyBulletMaterial);
+      mesh.position.set(x, y - 18, 0);
+      scene.add(mesh);
+      enemyBullets.push({ mesh, speed: 240 });
+    }
+
+    function createEnemies() {
+      enemies = [];
+      enemyGroup.clear();
+      const cols = 8;
+      const rows = 4;
+      const spacing = 60;
+      for (let row = 0; row < rows; row += 1) {
+        for (let col = 0; col < cols; col += 1) {
+          const enemy = new THREE.Mesh(enemyGeometry, enemyMaterial.clone());
+          const x = (col - (cols - 1) / 2) * spacing;
+          const y = world.height / 2 - 140 - row * 60;
+          enemy.position.set(x, y, 0);
+          enemyGroup.add(enemy);
+          enemies.push({ mesh: enemy, alive: true });
+        }
+      }
+      enemyGroup.position.set(0, 0, 0);
+      enemyDirection = 1;
+      enemySpeed = 40 + state.wave * 8;
+    }
+
+    createEnemies();
+
+    function resetGame() {
+      state.score = 0;
+      state.lives = 3;
+      state.wave = 1;
+      state.gameOver = false;
+      state.paused = false;
+      bullets.forEach((bullet) => scene.remove(bullet.mesh));
+      enemyBullets.forEach((bullet) => scene.remove(bullet.mesh));
+      bullets = [];
+      enemyBullets = [];
+      createEnemies();
+    }
+
+    function mapHandPosition(landmark) {
+      const x = (landmark.x - 0.5) * world.width;
+      const y = (0.5 - landmark.y) * world.height;
+      return new THREE.Vector2(x, y);
+    }
+
+    function computeFingerCount(hand) {
+      const lm = hand.landmarks;
+      const tips = [8, 12, 16, 20];
+      let count = 0;
+      tips.forEach((idx) => {
+        if (lm[idx].y < lm[idx - 2].y) {
+          count += 1;
+        }
+      });
+      const thumbExtended = lm[4].x < lm[3].x ? 1 : 0;
+      return count + thumbExtended;
+    }
+
+    function updateRightHand(hand) {
+      const fingers = computeFingerCount(hand);
+      const indexTip = mapHandPosition(hand.landmarks[8]);
+      const dx = hand.landmarks[4].x - hand.landmarks[8].x;
+      const dy = hand.landmarks[4].y - hand.landmarks[8].y;
+      const pinchDistance = Math.hypot(dx, dy);
+      const pinch = pinchDistance < 0.045;
+
+      handState.right = {
+        label: `${fingers} Fingers`,
+        fingers,
+        indexTip,
+        pinch,
+      };
+
+      shipTargetX = THREE.MathUtils.clamp(-indexTip.x, -world.width / 2 + 40, world.width / 2 - 40);
+    }
+
+    function handleHands(results) {
+      handState.right = null;
+      let hasRight = false;
+      if (results.multiHandLandmarks && results.multiHandedness) {
+        results.multiHandLandmarks.forEach((landmarks, idx) => {
+          const handedness = results.multiHandedness[idx];
+          const label = handedness.label === "Left" ? "Right" : "Left";
+          if (label === "Right") {
+            updateRightHand({ landmarks });
+            hasRight = true;
+          }
+        });
+      }
+      if (!hasRight) {
+        lastPinch = false;
+      }
+    }
+
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1646424915/${file}`,
+    });
+
+    hands.setOptions({
+      maxNumHands: 2,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.7,
+      minTrackingConfidence: 0.7,
+    });
+
+    hands.onResults(handleHands);
+
+    const video = document.getElementById("video");
+    const cameraFeed = new Camera(video, {
+      onFrame: async () => {
+        await hands.send({ image: video });
+      },
+      width: 640,
+      height: 480,
+    });
+
+    cameraFeed.start();
+
+    let frames = 0;
+    let lastFpsTime = performance.now();
+
+    function updateStars(delta) {
+      for (let i = 0; i < settings.starCount; i += 1) {
+        const i3 = i * 3;
+        starPositions[i3 + 1] -= starSpeeds[i] * delta;
+        if (starPositions[i3 + 1] < -world.height / 2) {
+          starPositions[i3 + 1] = world.height / 2;
+          starPositions[i3] = (Math.random() - 0.5) * world.width;
+          starPositions[i3 + 2] = (Math.random() - 0.5) * 600;
+        }
+      }
+      starGeometry.attributes.position.needsUpdate = true;
+    }
+
+    function updateShip(delta) {
+      const shipY = -world.height / 2 + settings.shipYInset;
+      ship.position.x = THREE.MathUtils.lerp(ship.position.x, shipTargetX, 0.2);
+      ship.position.y = shipY;
+
+      if (shipHitTimer > 0) {
+        shipHitTimer -= delta;
+        ship.material.color.setHex(0xff2255);
+      } else {
+        ship.material.color.setHex(0x00ffff);
+      }
+    }
+
+    function updateEnemies(delta) {
+      const formationWidth = 7 * 60;
+      const bounds = world.width / 2 - 80;
+      enemyGroup.position.x += enemyDirection * enemySpeed * delta;
+      if (enemyGroup.position.x + formationWidth / 2 > bounds || enemyGroup.position.x - formationWidth / 2 < -bounds) {
+        enemyDirection *= -1;
+        enemyGroup.position.y -= 18;
+      }
+
+      enemyFireTimer -= delta;
+      if (enemyFireTimer <= 0 && !state.gameOver) {
+        const alive = enemies.filter((enemy) => enemy.alive);
+        if (alive.length > 0) {
+          const pick = alive[Math.floor(Math.random() * alive.length)].mesh;
+          spawnEnemyBullet(pick.position.x + enemyGroup.position.x, pick.position.y + enemyGroup.position.y);
+        }
+        enemyFireTimer = 0.7 + Math.random() * 0.6;
+      }
+    }
+
+    function updateBullets(delta) {
+      bullets.forEach((bullet) => {
+        bullet.mesh.position.y += bullet.speed * delta;
+      });
+      bullets = bullets.filter((bullet) => {
+        if (bullet.mesh.position.y > world.height / 2 + 60) {
+          scene.remove(bullet.mesh);
+          return false;
+        }
+        return true;
+      });
+
+      enemyBullets.forEach((bullet) => {
+        bullet.mesh.position.y -= bullet.speed * delta;
+      });
+      enemyBullets = enemyBullets.filter((bullet) => {
+        if (bullet.mesh.position.y < -world.height / 2 - 60) {
+          scene.remove(bullet.mesh);
+          return false;
+        }
+        return true;
+      });
+    }
+
+    function handleCollisions() {
+      bullets.forEach((bullet) => {
+        enemies.forEach((enemy) => {
+          if (!enemy.alive) return;
+          const dx = bullet.mesh.position.x - (enemy.mesh.position.x + enemyGroup.position.x);
+          const dy = bullet.mesh.position.y - (enemy.mesh.position.y + enemyGroup.position.y);
+          if (dx * dx + dy * dy < 360) {
+            enemy.alive = false;
+            enemyGroup.remove(enemy.mesh);
+            scene.remove(bullet.mesh);
+            bullet.hit = true;
+            state.score += 120;
+          }
+        });
+      });
+      bullets = bullets.filter((bullet) => !bullet.hit);
+
+      enemyBullets.forEach((bullet) => {
+        const dx = bullet.mesh.position.x - ship.position.x;
+        const dy = bullet.mesh.position.y - ship.position.y;
+        if (dx * dx + dy * dy < 300 && !state.gameOver) {
+          state.lives -= 1;
+          shipHitTimer = 0.3;
+          scene.remove(bullet.mesh);
+          bullet.hit = true;
+          if (state.lives <= 0) {
+            state.gameOver = true;
+          }
+        }
+      });
+      enemyBullets = enemyBullets.filter((bullet) => !bullet.hit);
+
+      if (enemies.every((enemy) => !enemy.alive)) {
+        state.wave += 1;
+        createEnemies();
+      }
+    }
+
+    function updateNameCursor() {
+      if (!handState.right) return;
+      const normalized = THREE.MathUtils.clamp((handState.right.indexTip.x + world.width / 2) / world.width, 0, 0.999);
+      state.nameCursor = Math.floor(normalized * nameAlphabet.length);
+    }
+
+    function handleNameInput() {
+      if (!handState.right) return;
+      updateNameCursor();
+      if (nameCooldown > 0) return;
+      const fingers = handState.right.fingers;
+      if (fingers === 5) {
+        if (!state.playerName) {
+          state.playerName = "PLAYER";
+        }
+        state.nameMode = false;
+        nameCooldown = 0.6;
+        return;
+      }
+      if (fingers === 2) {
+        state.playerName = state.playerName.slice(0, -1);
+        nameCooldown = 0.2;
+        return;
+      }
+      if (handState.right.pinch && !lastPinch) {
+        const letter = nameAlphabet[state.nameCursor] || "A";
+        if (state.playerName.length < 10) {
+          state.playerName += letter;
+        }
+        nameCooldown = 0.15;
+      }
+    }
+
+    function handleGameInput(now) {
+      if (!handState.right) return;
+      const pinch = handState.right.pinch;
+      if (pinch && !lastPinch) {
+        pinchStartTime = now;
+        pinchHandled = false;
+      }
+      if (pinch) {
+        if (!pinchHandled && now - pinchStartTime > settings.pauseHoldTime * 1000) {
+          state.paused = !state.paused;
+          pinchHandled = true;
+          fireCooldown = settings.fireCooldown;
+        }
+      } else if (lastPinch && !pinchHandled) {
+        if (!state.gameOver && !state.paused && fireCooldown <= 0) {
+          spawnBullet(ship.position.x, ship.position.y);
+          fireCooldown = settings.fireCooldown;
+        }
+      }
+    }
+
+    function updateHUD() {
+      hud.right.textContent = handState.right ? handState.right.label : "Searching";
+      if (state.nameMode) {
+        hud.system.textContent = "Enter Name";
+      } else if (state.gameOver) {
+        hud.system.textContent = "Game Over / Pinch";
+      } else if (state.paused) {
+        hud.system.textContent = "Paused";
+      } else {
+        hud.system.textContent = "Online";
+      }
+      hud.score.textContent = `${state.score}`;
+      hud.lives.textContent = `${Math.max(state.lives, 0)}`;
+      hud.wave.textContent = `${state.wave.toString().padStart(2, "0")}`;
+      const cursorLetter = nameAlphabet[state.nameCursor] || "-";
+      hud.player.textContent = state.nameMode ? `${state.playerName}${cursorLetter}` : state.playerName || "PLAYER";
+      hud.gesture.textContent = state.nameMode ? "2F Del / 5F OK" : handState.right ? `${handState.right.fingers} Fingers` : "--";
+      if (introState.instructionsVisible) {
+        hud.fire.textContent = "Pinch Start";
+      } else if (state.nameMode) {
+        hud.fire.textContent = "Pinch Add";
+      } else {
+        hud.fire.textContent = handState.right?.pinch ? "Pinch Hold" : "Idle";
+      }
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const delta = clock.getDelta();
+      const now = performance.now();
+      frames += 1;
+      if (now - lastFpsTime > 500) {
+        hud.fps.textContent = `${Math.round((frames * 1000) / (now - lastFpsTime))}`;
+        frames = 0;
+        lastFpsTime = now;
+      }
+
+      if (!handState.right) {
+        shipTargetX = THREE.MathUtils.lerp(shipTargetX, 0, 0.05);
+      }
+
+      if (fireCooldown > 0) {
+        fireCooldown -= delta;
+      }
+      if (restartCooldown > 0) {
+        restartCooldown -= delta;
+      }
+      if (state.gameOver && handState.right?.pinch && restartCooldown <= 0) {
+        resetGame();
+        restartCooldown = 0.6;
+      }
+      if (nameCooldown > 0) {
+        nameCooldown -= delta;
+      }
+
+      updateStars(delta);
+      updateShip(delta);
+      if (introState.instructionsVisible) {
+        if (handState.right?.pinch && !lastPinch) {
+          introState.instructionsVisible = false;
+          instructionsEl.classList.remove("show");
+        }
+      } else if (state.nameMode) {
+        shipTargetX = 0;
+        handleNameInput();
+      } else {
+        handleGameInput(now);
+        if (!state.gameOver && !state.paused) {
+          updateEnemies(delta);
+        }
+        if (!state.paused) {
+          updateBullets(delta);
+          handleCollisions();
+        }
+      }
+      if (handState.right) {
+        lastPinch = handState.right.pinch;
+      }
+      updateHUD();
+      renderer.render(scene, camera);
+    }
+
+    function resize() {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      world.width = width;
+      world.height = height;
+      renderer.setSize(width, height);
+      camera.left = -width / 2;
+      camera.right = width / 2;
+      camera.top = height / 2;
+      camera.bottom = -height / 2;
+      camera.updateProjectionMatrix();
+      initStars();
+      createEnemies();
+    }
+
+    window.addEventListener("resize", resize);
+    resize();
+    animate();
+  </script>
+</body>
+</html>
