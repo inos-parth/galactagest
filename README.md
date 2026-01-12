@@ -21,5 +21,4 @@ Then open: `http://localhost:8000/index.html`
 - Camera access requires HTTPS or `localhost`.
 - MediaPipe + Three.js are loaded from CDN.
 
-## Deploy
-This is a static site. You can deploy to Netlify, Vercel, or GitHub Pages by uploading or connecting the repo.
+
