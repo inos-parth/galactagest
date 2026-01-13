@@ -178,7 +178,7 @@
           <div>Pause: Hold pinch</div>
           <div>Restart: Pinch after Game Over</div>
           <div>Name Entry: Move to select letter, pinch to add, 2 fingers delete, 5 fingers confirm</div>
-          <div>Pinch to start the game</div>
+          <div>Thumbs up to start the game</div>
         </div>
       </div>
     </div>
@@ -411,6 +411,16 @@
       return count + thumbExtended;
     }
 
+    function isThumbsUp(hand) {
+      const lm = hand.landmarks;
+      const thumbUp = lm[4].y < lm[3].y && lm[3].y < lm[2].y;
+      const indexDown = lm[8].y > lm[6].y;
+      const middleDown = lm[12].y > lm[10].y;
+      const ringDown = lm[16].y > lm[14].y;
+      const pinkyDown = lm[20].y > lm[18].y;
+      return thumbUp && indexDown && middleDown && ringDown && pinkyDown;
+    }
+
     function updateRightHand(hand) {
       const fingers = computeFingerCount(hand);
       const indexTip = mapHandPosition(hand.landmarks[8]);
@@ -418,12 +428,14 @@
       const dy = hand.landmarks[4].y - hand.landmarks[8].y;
       const pinchDistance = Math.hypot(dx, dy);
       const pinch = pinchDistance < 0.045;
+      const thumbsUp = isThumbsUp(hand);
 
       handState.right = {
         label: `${fingers} Fingers`,
         fingers,
         indexTip,
         pinch,
+        thumbsUp,
       };
 
       shipTargetX = THREE.MathUtils.clamp(-indexTip.x, -world.width / 2 + 40, world.width / 2 - 40);
@@ -654,7 +666,7 @@
       hud.player.textContent = state.nameMode ? `${state.playerName}${cursorLetter}` : state.playerName || "PLAYER";
       hud.gesture.textContent = state.nameMode ? "2F Del / 5F OK" : handState.right ? `${handState.right.fingers} Fingers` : "--";
       if (introState.instructionsVisible) {
-        hud.fire.textContent = "Pinch Start";
+        hud.fire.textContent = "Thumb Start";
       } else if (state.nameMode) {
         hud.fire.textContent = "Pinch Add";
       } else {
@@ -694,7 +706,7 @@
       updateStars(delta);
       updateShip(delta);
       if (introState.instructionsVisible) {
-        if (handState.right?.pinch && !lastPinch) {
+        if (handState.right?.thumbsUp) {
           introState.instructionsVisible = false;
           instructionsEl.classList.remove("show");
         }
